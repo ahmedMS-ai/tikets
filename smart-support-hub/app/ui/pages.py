@@ -32,8 +32,7 @@ def main_page(user: Dict[str, str]):
     # ---------- Paste & Parse ----------
     with st.expander("📋 Paste full ticket text → auto-fill the form", expanded=True):
         raw = st.text_area("Paste the ticket block here", height=220, key="raw_ticket_text")
-        colp1, colp2 = st.columns([1, 2])
-        if colp1.button("Parse ticket"):
+        if st.button("Parse ticket"):
             try:
                 ensure_sheets_and_headers()
                 upsert_user(user["email"], user["name"])
@@ -41,7 +40,6 @@ def main_page(user: Dict[str, str]):
                 parsed = parse_ticket_text(raw or "")
                 _prefill_session(parsed)
 
-                # Log parse attempt
                 append_log_row(
                     {
                         "ticket_id": parsed.get("id", "") or "N/A",
