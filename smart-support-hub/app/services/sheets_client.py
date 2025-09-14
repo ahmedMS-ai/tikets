@@ -21,7 +21,6 @@ USERS_HEADERS = ["email","name","role","active","created_at"]
 
 SCOPE = ["https://www.googleapis.com/auth/spreadsheets","https://www.googleapis.com/auth/drive"]
 
-
 def _client() -> gspread.Client:
     s = load_settings()
     info = s.gcp_service_account
@@ -30,11 +29,9 @@ def _client() -> gspread.Client:
     creds = Credentials.from_service_account_info(info, scopes=SCOPE)
     return gspread.authorize(creds)
 
-
 def _extract_sheet_id(sid_or_url: str) -> str:
     m = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", sid_or_url)
     return m.group(1) if m else sid_or_url
-
 
 def _open() -> gspread.Spreadsheet:
     s = load_settings()
@@ -43,12 +40,19 @@ def _open() -> gspread.Spreadsheet:
         raise RuntimeError("GOOGLE_SHEET_ID missing")
     return _client().open_by_key(sid)
 
+# Public helpers (لتجنّب ModuleNotFoundError مع الصفحات)
+def open_spreadsheet() -> gspread.Spreadsheet:
+    return _open()
+
+def get_df(sheet_name: str) -> pd.DataFrame:
+    sh = _open()
+    ws = sh.worksheet(sheet_name)
+    return pd.DataFrame(ws.get_all_records())
 
 def _ensure_headers(ws: gspread.Worksheet, headers: List[str]):
     values = ws.row_values(1)
     if not values:
         ws.append_row(headers)
-
 
 def ensure_sheets_and_headers():
     sh = _open()
@@ -71,19 +75,14 @@ def ensure_sheets_and_headers():
     else:
         _ensure_headers(sh.worksheet("users"), USERS_HEADERS)
 
-
 def _append_row(sheet_name: str, headers: List[str], row_dict: Dict[str, Any]):
     sh = _open()
     ws = sh.worksheet(sheet_name)
-    write_headers = ws.row_values(1) or headers
-    # فقط نكتب الأعمدة المعروفة بالترتيب، والباقي يظل فاضي لو عندك أعمدة إضافية
     row = [str(row_dict.get(h, "")) for h in headers]
     ws.append_row(row, value_input_option="USER_ENTERED")
 
-
 def append_ticket_row(row_dict: Dict[str, Any]):
     _append_row("tickets", TICKETS_HEADERS, row_dict)
-
 
 def append_log_row(row_dict: Dict[str, Any]):
     row_dict = dict(row_dict)
@@ -94,11 +93,9 @@ def append_log_row(row_dict: Dict[str, Any]):
             row_dict[k] = json.dumps(v, ensure_ascii=False)
     _append_row("log", LOG_HEADERS, row_dict)
 
-
 def _header_index_map(ws: gspread.Worksheet) -> Dict[str, int]:
     hdrs = ws.row_values(1)
     return {h.strip(): i + 1 for i, h in enumerate(hdrs) if h.strip()}
-
 
 def get_user_role(email: str) -> str:
     sh = _open()
@@ -108,7 +105,6 @@ def get_user_role(email: str) -> str:
         if str(r.get("email", "")).lower() == email.lower():
             return str(r.get("role", DEFAULT_ROLE)) or DEFAULT_ROLE
     return DEFAULT_ROLE
-
 
 def upsert_user(email: str, name: str, role: str = DEFAULT_ROLE, active: bool = True):
     sh = _open()
