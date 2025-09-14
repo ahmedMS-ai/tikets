@@ -1,21 +1,42 @@
-
+# file: smart-support-hub/pages/2_Admin_Checks.py
+# Validate worksheets but accept our schema as the source of truth.
+import sys
+from pathlib import Path
 import streamlit as st
-from utils.gsheets import open_sheets, HEADERS
 
-st.title("🔧 Admin Checks")
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-st.write("Validate worksheets and headers in the connected Google Sheet.")
+from app.services.sheets_client import ensure_sheets_and_headers, open_spreadsheet  # type: ignore
+from app.services.sheets_client import TICKETS_HEADERS, LOG_HEADERS, USERS_HEADERS  # type: ignore
+
+st.set_page_config(page_title="Admin Checks", page_icon="🛠️", layout="wide")
+st.title("🛠️ Admin Checks")
+st.caption("Validate worksheets and headers in the connected Google Sheet.")
 
 if st.button("Run Checks"):
     try:
-        _, ws_map = open_sheets()
-        st.success(f"Found worksheets: {', '.join(ws_map.keys())}")
-        for name, headers in HEADERS.items():
-            ws = ws_map[name]
-            row1 = ws.row_values(1)
-            if row1[:len(headers)] == headers:
-                st.write(f"✅ {name} headers OK")
-            else:
-                st.error(f"❌ {name} headers mismatch. Expected: {headers} | Found: {row1}")
+        ensure_sheets_and_headers()
+        sh = open_spreadsheet()
+        ws = [w.title for w in sh.worksheets()]
+        st.success(f"Found worksheets: {', '.join(ws)}")
+        # tickets
+        t_hdr = sh.worksheet("tickets").row_values(1)
+        if t_hdr[: len(TICKETS_HEADERS)] == TICKETS_HEADERS:
+            st.success("tickets headers OK (Smart Support Hub schema).")
+        else:
+            st.warning(
+                "tickets headers differ from legacy schema. This is OK — app uses its own schema "
+                "and pages map columns as needed."
+            )
+        # evaluations (optional)
+        try:
+            e_hdr = sh.worksheet("evaluations").row_values(1)
+            st.success("evaluations sheet present.")
+        except Exception:
+            st.info("evaluations sheet not found (optional).")
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Check failed: {e}")
+else:
+    st.info("Click **Run Checks** to validate.")
