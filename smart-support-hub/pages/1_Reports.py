@@ -1,48 +1,49 @@
-
-import pandas as pd
+# file: smart-support-hub/pages/1_Reports.py
 import streamlit as st
-from utils.gsheets import read_df
+import pandas as pd
 
-st.title("📈 Reports & Analytics")
+from app.services.sheets_client import ensure_sheets_and_headers, _open  # type: ignore
 
-col1, col2, col3 = st.columns(3)
+
+st.set_page_config(page_title="Reports", page_icon="📈", layout="wide")
+st.title("📈 Reports / Analytics")
 
 try:
-    df_t = read_df("tickets")
-    df_e = read_df("evaluations")
+    ensure_sheets_and_headers()
+    sh = _open()
+    df = pd.DataFrame(sh.worksheet("tickets").get_all_records())
 except Exception as e:
-    st.error(f"Cannot read Google Sheets: {e}")
+    st.error(f"Cannot load tickets yet: {e}")
     st.stop()
 
-with col1:
-    st.metric("Total Tickets", len(df_t))
-with col2:
-    sev_mix = df_t["severity"].value_counts() if not df_t.empty else pd.Series(dtype=int)
-    st.metric("Top Severity", sev_mix.index[0] if not sev_mix.empty else "—")
-with col3:
-    pass_rate = 100.0 * (df_e["pass"].astype(str).str.upper().eq("TRUE").mean()) if not df_e.empty else 0.0
-    st.metric("Evaluator Pass Rate", f"{pass_rate:.1f}%")
+# Adapt from our schema -> page's expected schema
+expected = [
+    "timestamp", "ticket_id", "title", "description",
+    "severity", "product", "module", "locale",
+    "reporter", "attachments", "status",
+]
 
-st.divider()
+df_out = pd.DataFrame()
+df_out["timestamp"] = df.get("created_at", "")
+df_out["ticket_id"] = df.get("id", "")
+df_out["title"] = df.get("title", "")
+df_out["description"] = df.get("description", "")
+df_out["severity"] = df.get("issue_type", "")        # map
+df_out["product"] = "TMS"                            # default
+df_out["module"] = ""                                # unknown
+df_out["locale"] = ""                                # unknown
+df_out["reporter"] = df.get("requester", "")
+df_out["attachments"] = df.get("links_attachments", "")
+df_out["status"] = df.get("status", "")
 
-st.subheader("Severity Mix")
-if not df_t.empty:
-    st.bar_chart(df_t["severity"].value_counts())
-else:
+df_out = df_out[expected]
+
+st.subheader("Mix by severity (mapped from issue_type)")
+if df_out.empty:
     st.info("No tickets yet.")
-
-st.subheader("Scores Distribution")
-if not df_e.empty:
-    df_e["raw_score"] = pd.to_numeric(df_e["raw_score"], errors="coerce")
-    st.bar_chart(df_e["raw_score"])
 else:
-    st.info("No evaluations yet.")
+    sev_mix = df_out["severity"].value_counts()
+    st.bar_chart(sev_mix)
 
-st.subheader("Recent Activity")
-c1, c2 = st.columns(2)
-with c1:
-    st.write("**Latest Tickets**")
-    st.dataframe(df_t.tail(20), use_container_width=True)
-with c2:
-    st.write("**Latest Evaluations**")
-    st.dataframe(df_e.tail(20), use_container_width=True)
+st.subheader("Raw (mapped) view")
+st.dataframe(df_out.tail(200), use_container_width=True)
